@@ -1,3 +1,12 @@
+#
+# Traverse the current directory and parse folders as film names
+# Look up the film name on IMDB and hopefully figure out the year it was released
+#
+# TODOs:
+# 1) Find a more reliable query to run on IMDB (or another service)
+# 2) Replace the (sluggish) IE api calls with a more direct approach
+# 3) Add more error detection etc.
+#
 
 function compareTitles($first, $second) {
 	$first = [regex]::replace($first, "[\W]", "").toLower()
@@ -14,25 +23,26 @@ function getElementsByTagName($node, $tag) {
 	return [System.__ComObject].InvokeMember("getElementsByTagName", [System.Reflection.BindingFlags]::InvokeMethod, $null, $node, $tag)
 }
 
-$folders = @( Get-ChildItem | where { $_.PsIsContainer } | select -property Name)
-
 $ie = new-object -com "InternetExplorer.Application"
 
+# For debugging, to watch what's happening
 #$ie.Visible = $true
 
+$folders = @( Get-ChildItem | where { $_.PsIsContainer } | select -property Name)
+
 $folders | foreach {
-	$originalFolder = $_.Name
-	$folder = $_.Name -replace "_", " "
+	$folder = $_.Name
+	$title = $folder -replace "_", " "
+	$title = $title -replace "-", " "
 	
-	#$folder
-	
-	$matches = $folder -match '\([0-9]+\)'
+	$matches = $title -match '\([0-9]+\)'
 	
 	if ( $matches -eq $false ) {
 	
-		echo "Locating a release year for '$folder':..."
+		echo "Locating a release year for '$title':..."
 	
-		$url = "http://www.imdb.com/search/title?title=$folder"
+		# TODO: use http://www.imdb.com/find?q=<film-title>&s=titles instead
+		$url = "http://www.imdb.com/search/title?title=$title"
 		$ie.Navigate($url)
 		
 		#$url
@@ -50,19 +60,18 @@ $folders | foreach {
 		#$titles
 		
 		for ( $i = 0; $i -lt $dates.count -and $i -lt $titles.count; $i++) {
-			if ( compareTitles $titles[$i] $folder ) {
-				$title = $titles[$i]
+			if ( compareTitles $titles[$i] $title ) {
 				$date = $dates[$i]
 				$matched = $date -match "[0-9]+"
 				$date = $matches[0]
 				echo "===> Found matching item '$title ($date)'"
-				mv $originalFolder "$title ($date)"
+				mv $folder "$title ($date)"
 			}
 		}
 		
 		
 	} else {
-		echo "Title '$folder' already has a release year"
+		echo "Title '$title' already has a release year"
 	}
 }
 
