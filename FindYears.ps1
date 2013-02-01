@@ -15,18 +15,46 @@ function compareTitles($first, $second) {
 	return $first -eq $second
 }
 
-function getElementsByClassName($node, $class) {
-	return [System.__ComObject].InvokeMember("getElementsByClassName", [System.Reflection.BindingFlags]::InvokeMethod, $null, $node, $class)
-}
+# Because either the IE api is stupid, or I am
+function newIE { return new-object -com "InternetExplorer.Application" }
+function getElementsByClassName($node, $class) {[System.__ComObject].InvokeMember("getElementsByClassName", [System.Reflection.BindingFlags]::InvokeMethod, $null, $node, $class)}
+function getElementsByTagName($node, $tag) {return [System.__ComObject].InvokeMember("getElementsByTagName", [System.Reflection.BindingFlags]::InvokeMethod, $null, $node, $tag)}
 
-function getElementsByTagName($node, $tag) {
-	return [System.__ComObject].InvokeMember("getElementsByTagName", [System.Reflection.BindingFlags]::InvokeMethod, $null, $node, $tag)
+function getReleaseYear($ie, $title) {
+	# TODO: use http://www.imdb.com/find?q=<film-title>&s=titles instead
+	$url = "http://www.imdb.com/search/title?title=$title"
+	$ie.Navigate($url)
+	
+	while( $ie.busy ) {
+		Sleep 1
+	}
+
+	$doc = $ie.Document
+
+	$dates = @(getElementsByClassName $doc  "year_type" | foreach {$_.textContent} )
+	$titles = @(getElementsByClassName $doc "title" | foreach { @(getElementsByTagName $_ "a")[1].textContent })
+	
+	#$dates
+	#$titles
+	
+	for ( $i = 0; $i -lt $dates.count -and $i -lt $titles.count; $i++) {
+		if ( compareTitles $titles[$i] $title ) {
+			$date = $dates[$i]
+			$matched = $date -match "[0-9]+"
+			if ( $matched ) {
+				return $matches[0]
+			}
+		}
+	}
+	return $false
 }
 
 $ie = new-object -com "InternetExplorer.Application"
 
 # For debugging, to watch what's happening
 #$ie.Visible = $true
+
+
 
 $folders = @( Get-ChildItem | where { $_.PsIsContainer } | select -property Name)
 
@@ -41,35 +69,9 @@ $folders | foreach {
 	
 		echo "Locating a release year for '$title':..."
 	
-		# TODO: use http://www.imdb.com/find?q=<film-title>&s=titles instead
-		$url = "http://www.imdb.com/search/title?title=$title"
-		$ie.Navigate($url)
-		
-		#$url
-		
-		while( $ie.busy ) {
-			Sleep 1
-		}
+		$date = getReleaseYear $ie $title
 	
-		$doc = $ie.Document
-	
-		$dates = @(getElementsByClassName $doc  "year_type" | foreach {$_.textContent} )
-		$titles = @(getElementsByClassName $doc "title" | foreach { @(getElementsByTagName $_ "a")[1].textContent })
-		
-		#$dates
-		#$titles
-		
-		for ( $i = 0; $i -lt $dates.count -and $i -lt $titles.count; $i++) {
-			if ( compareTitles $titles[$i] $title ) {
-				$date = $dates[$i]
-				$matched = $date -match "[0-9]+"
-				$date = $matches[0]
-				echo "===> Found matching item '$title ($date)'"
-				mv $folder "$title ($date)"
-			}
-		}
-		
-		
+		mv $folder "$title ($date)"
 	} else {
 		echo "Title '$title' already has a release year"
 	}
